@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'driver_dashboard.dart';
 class SignUpScreen extends StatefulWidget {
   final String role;
 
@@ -30,23 +30,26 @@ class _SignUpScreenState extends State<SignUpScreen> {
     super.dispose();
   }
 
-  void _handleRegister() {
-    // Basic Validation
-    if (_nameController.text.trim().isEmpty ||
-        _emailController.text.trim().isEmpty) {
-      _showError("Please fill in required fields");
-      return;
-    }
-
-    // Role-specific validation
-    if (widget.role == 'Driver' && _licenseController.text.isEmpty) {
-      _showError("License number is required for drivers");
-      return;
-    }
-
-    // Success: Proceed to Step 3 or Dashboard
-    print("Registering as ${widget.role}");
+void _handleRegister() {
+  if (_nameController.text.trim().isEmpty ||
+      _emailController.text.trim().isEmpty) {
+    _showError("Please fill in required fields");
+    return;
   }
+
+  if (widget.role == 'Driver' && _licenseController.text.isEmpty) {
+    _showError("License number is required for drivers");
+    return;
+  }
+
+  // Navigate to Driver Dashboard
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => const DriverDashboard(),
+    ),
+  );
+}
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).removeCurrentSnackBar();
