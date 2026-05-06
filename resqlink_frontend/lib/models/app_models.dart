@@ -109,6 +109,9 @@ class BloodRequest {
   final String priority; // 'Normal' | 'Urgent'
   final String distance;
   final String urgencyLevel; // 'CRITICAL' | 'URGENT' | 'STANDARD'
+  final String? customerId;   // customer who created the request
+  final double? latitude;     // stored in blood_requests (DB source of truth)
+  final double? longitude;    // stored in blood_requests (DB source of truth)
   RequestStatus status;
   String? matchedDonorName;
 
@@ -121,6 +124,9 @@ class BloodRequest {
     required this.priority,
     required this.distance,
     required this.urgencyLevel,
+    this.customerId,
+    this.latitude,
+    this.longitude,
     this.status = RequestStatus.idle,
     this.matchedDonorName,
   });
@@ -137,6 +143,10 @@ class BloodRequest {
           (urgency == 'CRITICAL' || urgency == 'URGENT') ? 'Urgent' : 'Normal',
       distance: json['distance']?.toString() ?? 'N/A',
       urgencyLevel: urgency,
+      // ── DB-stored coordinates (preferred over geocoding) ──
+      customerId: json['customer_id'] as String?,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
       status: RequestStatus.waiting,
     );
   }

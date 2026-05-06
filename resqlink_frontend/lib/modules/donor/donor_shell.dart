@@ -1132,31 +1132,76 @@ class _DonationMapWidgetState extends State<_DonationMapWidget> {
     } catch (_) {}
     _donorLocation ??= _karachiCentre;
 
-    // ── 2. Get hospital location via Nominatim (web-compatible) ───────────
+    // ── 2. Resolve hospital/customer location — 3-priority chain ─────────
+    //
+    //  Priority 1 ▸ Coordinates stored directly on the blood_requests row.
+    //               Zero extra network calls — fastest and most accurate.
+    //
+    //  Priority 2 ▸ customer_data table lookup (for the customer_id on the
+    //               request).  Used when the blood_request was created before
+    //               lat/lng columns were added, or when the request row's
+    //               coordinates are missing.
+    //
+    //  Priority 3 ▸ Nominatim reverse-geocoding of the address string.
+    //               Pure fallback — only fires when both DB sources fail.
+    //
+    //  _karachiCentre is set only after all three sources have been tried.
+    //
     final req = widget.req;
-    if (req != null && req.address.isNotEmpty) {
-      try {
-        final query = '${req.address}, Karachi, Pakistan';
-        final geoUri = Uri.parse(
-          'https://nominatim.openstreetmap.org/search'
-          '?q=${Uri.encodeComponent(query)}'
-          '&format=json&limit=1',
-        );
-        final geoRes = await http.get(
-          geoUri,
-          headers: {'User-Agent': 'ResQLink/1.0'},
-        );
-        if (geoRes.statusCode == 200) {
-          final results = jsonDecode(geoRes.body) as List;
-          if (results.isNotEmpty) {
-            final lat = double.parse(results[0]['lat']);
-            final lon = double.parse(results[0]['lon']);
-            _hospitalLocation = LatLng(lat, lon);
-          }
-        }
-      } catch (e) {
-        debugPrint('Geocoding error: $e');
+    if (req != null) {
+      // ── Priority 1: coords already on the blood_requests row ───────────
+      if (req.latitude != null && req.longitude != null) {
+        _hospitalLocation = LatLng(req.latitude!, req.longitude!);
+        debugPrint('[Map] ✅ Using blood_request stored coordinates');
       }
+
+      // ── Priority 2: customer_data table ────────────────────────────────
+      if (_hospitalLocation == null && req.customerId != null) {
+        try {
+          final locData =
+              await DonationService.fetchCustomerLocation(req.customerId!);
+          final lat = locData?['latitude'];
+          final lng = locData?['longitude'];
+          if (lat != null && lng != null) {
+            _hospitalLocation = LatLng(lat, lng);
+            debugPrint('[Map] ✅ Using customer_data coordinates');
+          }
+        } catch (e) {
+          debugPrint('[Map] customer_data lookup failed: $e');
+        }
+      }
+
+      // ── Priority 3: Nominatim geocoding (last resort) ──────────────────
+      if (_hospitalLocation == null && req.address.isNotEmpty) {
+        try {
+          final query = '${req.address}, Karachi, Pakistan';
+          final geoUri = Uri.parse(
+            'https://nominatim.openstreetmap.org/search'
+            '?q=${Uri.encodeComponent(query)}'
+            '&format=json&limit=1',
+          );
+          final geoRes = await http.get(
+            geoUri,
+            headers: {'User-Agent': 'ResQLink/1.0'},
+          );
+          if (geoRes.statusCode == 200) {
+            final results = jsonDecode(geoRes.body) as List;
+            if (results.isNotEmpty) {
+              final lat = double.parse(results[0]['lat']);
+              final lon = double.parse(results[0]['lon']);
+              _hospitalLocation = LatLng(lat, lon);
+              debugPrint('[Map] ✅ Using Nominatim geocoded coordinates');
+            }
+          }
+        } catch (e) {
+          debugPrint('[Map] Nominatim geocoding error: $e');
+        }
+      }
+    }
+
+    // All three sources failed — use centre of Karachi as last-resort fallback
+    if (_hospitalLocation == null) {
+      debugPrint('[Map] ⚠️  All location sources failed — defaulting to Karachi centre');
     }
     _hospitalLocation ??= _karachiCentre;
 
@@ -1167,16 +1212,18 @@ class _DonationMapWidgetState extends State<_DonationMapWidget> {
       _hospitalLocation!,
     );
     final straightKm = distMetres / 1000;
-// Apply 1.3x road factor — straight-line is always shorter than road distance
+    // Apply 1.3× road factor — straight-line is always shorter than road distance
     final roadKm = straightKm * 1.3;
-// City driving average 25 km/h with traffic
+    // City driving average 25 km/h with traffic
     final driveMinutes = (roadKm / 25 * 60).round();
 
+    // Only update state once — prevents the map from snapping to _karachiCentre
+    // before the async resolution above completes.
     if (mounted) {
       setState(() {
         _distanceText = '~${roadKm.toStringAsFixed(1)} km to hospital';
         _driveTime = '~$driveMinutes min drive';
-        _locationLoading = false;
+        _locationLoading = false; // ← map renders ONLY after resolution is done
       });
     }
   }

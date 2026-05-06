@@ -24,6 +24,37 @@ class DonationService {
     }
   }
 
+  /// Fetches the stored latitude/longitude for a customer from the
+  /// [customer_data] table.  Returns a map with nullable 'latitude' and
+  /// 'longitude' doubles, or null when no record exists.
+  ///
+  /// Used by [_DonationMapWidgetState] as a second-priority location source
+  /// (after the coordinates embedded in the [blood_requests] row itself).
+  static Future<Map<String, double?>?> fetchCustomerLocation(
+      String customerId) async {
+    try {
+      final res = await _sb
+          .from('customer_data')
+          .select('latitude, longitude')
+          .eq('customer_id', customerId)
+          .maybeSingle();
+
+      if (res == null) return null;
+
+      final lat = (res['latitude'] as num?)?.toDouble();
+      final lng = (res['longitude'] as num?)?.toDouble();
+
+      // Only return when at least one coordinate is valid
+      if (lat == null && lng == null) return null;
+
+      debugPrint('[fetchCustomerLocation] found: lat=$lat, lng=$lng');
+      return {'latitude': lat, 'longitude': lng};
+    } catch (e) {
+      debugPrint('[fetchCustomerLocation] error: $e');
+      return null;
+    }
+  }
+
   /// Donor accepts a blood request → insert donation row + update request status
   static Future<void> acceptDonationRequest(
       String requestId, String donorId) async {
