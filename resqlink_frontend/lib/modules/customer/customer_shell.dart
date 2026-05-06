@@ -3,6 +3,7 @@
 // shimmer loading, RefreshIndicator, RepaintBoundary on maps, staggered lists,
 // tel: links on phone icons, accessibility Semantics.
 // v4: Replaced all fake MapGridPainter with real flutter_map (OpenStreetMap).
+//customer file
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -716,6 +717,7 @@ class _CustomerAmbulanceFlowState extends State<CustomerAmbulanceFlow> {
     if (_addressCtrl.text.trim().isEmpty && !_locationFetched) {
       showErrorSnack(context, 'Enter or detect pickup location');
       Haptics.medium();
+
       return;
     }
 
