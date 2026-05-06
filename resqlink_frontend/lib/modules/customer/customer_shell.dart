@@ -1095,6 +1095,7 @@ class _CustomerAmbulanceFlowState extends State<CustomerAmbulanceFlow> {
         ),
       );
 
+//waiting screen
   Widget _waitingScreen() => Scaffold(
         appBar: const ResQAppBar(title: 'Finding Driver', showBack: false),
         body: Column(children: [
