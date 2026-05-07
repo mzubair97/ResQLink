@@ -405,17 +405,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 28),
-                Center(
-                  child: Text('OR CONTINUE WITH',
-                      style: AppTextStyles.label(color: AppColors.white40)),
-                ),
-                const SizedBox(height: 18),
-                Row(children: [
-                  Expanded(child: _socialBtn(Icons.apple)),
-                  const SizedBox(width: 14),
-                  Expanded(child: _socialBtn(Icons.g_mobiledata)),
-                ]),
                 const SizedBox(height: 32),
                 Center(
                   child: InkWell(

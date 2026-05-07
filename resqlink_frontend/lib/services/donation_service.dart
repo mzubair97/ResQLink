@@ -61,15 +61,44 @@ class DonationService {
     final reqId = int.tryParse(requestId);
     if (reqId == null) throw Exception('Invalid request ID: $requestId');
 
+    // Check if this donor already accepted this request
+    final existing = await _sb
+        .from('donations')
+        .select('id')
+        .eq('request_id', reqId)
+        .eq('donor_id', donorId)
+        .maybeSingle();
+    if (existing != null)
+      throw Exception('You have already accepted this request.');
+
+    // Insert one donation row (1 donor = 1 unit)
     await _sb.from('donations').insert({
       'request_id': reqId,
       'donor_id': donorId,
       'status': 'accepted',
     });
 
-    await _sb.from('blood_requests').update({
-      'status': 'matched',
-      'donor_id': donorId,
-    }).eq('id', reqId);
+    // Read current progress
+    final row = await _sb
+        .from('blood_requests')
+        .select('units, accepted_units')
+        .eq('id', reqId)
+        .single();
+
+    final totalUnits = (row['units'] as num).toInt();
+    final newAccepted = (row['accepted_units'] as num).toInt() + 1;
+
+    // If all units filled → mark matched, otherwise just increment the counter
+    if (newAccepted >= totalUnits) {
+      await _sb.from('blood_requests').update({
+        'accepted_units': newAccepted,
+        'status': 'matched',
+        'donor_id': donorId, // last donor, for backward compat
+      }).eq('id', reqId);
+    } else {
+      await _sb.from('blood_requests').update({
+        'accepted_units': newAccepted,
+      }).eq('id', reqId);
+    }
   }
 }
