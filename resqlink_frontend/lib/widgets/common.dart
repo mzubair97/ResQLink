@@ -405,7 +405,7 @@ class ProfileField extends StatelessWidget {
                       suffixIcon,
                       color: suffixIcon == Icons.my_location
                           ? AppColors.red
-                          : AppColors.white40,
+                          : AppColors.green,
                       size: 20,
                     ),
                   )

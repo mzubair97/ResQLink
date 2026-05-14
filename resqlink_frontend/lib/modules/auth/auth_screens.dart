@@ -13,7 +13,7 @@ import '../../widgets/animated_press_button.dart';
 import '../../models/app_models.dart';
 import '../../services/app_service.dart';
 import '../customer/customer_shell.dart';
-import '../donor/donor_shell.dart';
+import '../donor/donor_shell (2).dart';
 import '../driver/driver_shell.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
@@ -259,9 +259,13 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _onEmailChanged(String v) {
+    final atIdx = v.indexOf('@');
+    final hasAt = atIdx > 0;
+    final domainPart = hasAt ? v.substring(atIdx + 1) : '';
+    final hasDomainDot = domainPart.contains('.') && !domainPart.endsWith('.');
     setState(() {
       _emailError = null;
-      _emailValid = v.contains('@') && v.contains('.');
+      _emailValid = hasAt && hasDomainDot;
     });
   }
 
@@ -271,8 +275,12 @@ class _LoginScreenState extends State<LoginScreen> {
     String? eErr, pErr;
     if (email.isEmpty) {
       eErr = 'Email is required';
-    } else if (!email.contains('@') || !email.contains('.')) {
-      eErr = 'Enter a valid email (must contain @ and .)';
+    } else {
+      final atIdx = email.indexOf('@');
+      final hasAt = atIdx > 0;
+      final domainPart = hasAt ? email.substring(atIdx + 1) : '';
+      final hasDomainDot = domainPart.contains('.') && !domainPart.endsWith('.');
+      if (!hasAt || !hasDomainDot) eErr = 'Enter a valid email (e.g. user@example.com)';
     }
     if (pass.isEmpty) pErr = 'Password is required';
     setState(() {
@@ -479,8 +487,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   Future<void> _send() async {
     final email = _emailCtrl.text.trim();
-    if (email.isEmpty || !email.contains('@') || !email.contains('.')) {
+    if (email.isEmpty) {
       setState(() => _emailError = 'Enter a valid email address');
+      Haptics.medium();
+      return;
+    }
+    final atIdx = email.indexOf('@');
+    final hasAt = atIdx > 0;
+    final domainPart = hasAt ? email.substring(atIdx + 1) : '';
+    final hasDomainDot = domainPart.contains('.') && !domainPart.endsWith('.');
+    if (!hasAt || !hasDomainDot) {
+      setState(() => _emailError = 'Enter a valid email (e.g. user@example.com)');
       Haptics.medium();
       return;
     }
@@ -777,7 +794,7 @@ class _RoleCard extends StatelessWidget {
                 ),
               ),
               if (isSelected)
-                const Icon(Icons.check_circle, color: AppColors.red, size: 22),
+                const Icon(Icons.check_circle, color: AppColors.green, size: 22),
             ]),
           ),
         ),
@@ -921,20 +938,43 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
   }
 
+  // Pakistan driving license format:
+  // - Formats: "ICT-XXXXXXX", "LHR-XXXXXXX", "KHI-XXXXXXX", or broader
+  //   alphanumeric codes like "ABC-1234567", "12345-6789012-3".
+  // - Regex accepts: 2-5 uppercase letters, a hyphen, then 5-10 alphanumeric chars.
+  //   Also accepts CNIC-style: digits-digits-digit.
+  static final _pakLicenseRegex = RegExp(
+    r'^([A-Z]{2,5}-[A-Z0-9]{5,10}|[0-9]{5}-[0-9]{7}-[0-9])$',
+    caseSensitive: false,
+  );
+
   bool _validateDetails() {
     String? nErr, phErr, emErr, pErr, bErr, lErr;
     final name = _nameCtrl.text.trim();
     final phone = _phoneCtrl.text.trim();
     final email = _emailCtrl.text.trim();
     final pass = _passCtrl.text;
+    final license = _licenseCtrl.text.trim();
 
-    if (name.isEmpty) nErr = 'Full name is required';
+    if (name.isEmpty) {
+      nErr = 'Full name is required';
+    } else if (!RegExp(r'^[a-zA-Z ]+$').hasMatch(name)) {
+      nErr = 'Name must contain letters and spaces only';
+    }
     if (phone.length < 13 || !phone.startsWith('+92'))
       phErr = 'Enter 10 digits after +92';
-    if (email.isEmpty)
+    // Email: must have @, a domain part, and a dot after the @
+    if (email.isEmpty) {
       emErr = 'Email is required';
-    else if (!email.contains('@') || !email.contains('.'))
-      emErr = 'Enter a valid email (must contain @ and .)';
+    } else {
+      final atIdx = email.indexOf('@');
+      final hasAt = atIdx > 0;
+      final domainPart = hasAt ? email.substring(atIdx + 1) : '';
+      final hasDomainDot = domainPart.contains('.') && !domainPart.endsWith('.');
+      if (!hasAt || !hasDomainDot) {
+        emErr = 'Enter a valid email (e.g. user@example.com)';
+      }
+    }
     if (pass.isEmpty)
       pErr = 'Password is required';
     else if (pass.length < 8)
@@ -945,8 +985,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
       pErr = 'Password must contain at least one special character';
     if (widget.role == UserRole.donor && _selectedBloodGroup == null)
       bErr = 'Select your blood group';
-    if (widget.role == UserRole.driver && _licenseCtrl.text.trim().isEmpty)
-      lErr = 'License number is required';
+    // Driver license: must follow Pakistan license format
+    if (widget.role == UserRole.driver) {
+      if (license.isEmpty) {
+        lErr = 'License number is required';
+      } else if (!_pakLicenseRegex.hasMatch(license)) {
+        lErr = 'Invalid format. Use province-code format (e.g. LHR-1234567) or CNIC format (12345-6789012-3)';
+      }
+    }
 
     setState(() {
       _nameErr = nErr;
@@ -1099,7 +1145,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
             suffixIcon: _nameValid ? Icons.check_circle_rounded : null,
             onChanged: (v) => setState(() {
               _nameErr = null;
-              _nameValid = v.trim().isNotEmpty;
+              final trimmed = v.trim();
+              _nameValid = trimmed.isNotEmpty &&
+                  RegExp(r'^[a-zA-Z ]+$').hasMatch(trimmed);
             }),
           ),
           const SizedBox(height: 14),
@@ -1154,7 +1202,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
             suffixIcon: _emailValid ? Icons.check_circle_rounded : null,
             onChanged: (v) => setState(() {
               _emailErr = null;
-              _emailValid = v.contains('@') && v.contains('.');
+              final atIdx = v.indexOf('@');
+              final hasAt = atIdx > 0;
+              final domainPart = hasAt ? v.substring(atIdx + 1) : '';
+              _emailValid = hasAt && domainPart.contains('.') && !domainPart.endsWith('.');
             }),
           ),
           const SizedBox(height: 14),
@@ -1163,7 +1214,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           if (widget.role == UserRole.driver) ...[
             ProfileField(
               label: 'LICENSE NUMBER',
-              hint: 'DL-12345-XYZ',
+              hint: 'e.g. LHR-1234567 or ICT-1234567',
               controller: _licenseCtrl,
               prefixIcon: Icons.badge_outlined,
               errorText: _licenseErr,

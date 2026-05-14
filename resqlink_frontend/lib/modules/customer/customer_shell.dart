@@ -109,30 +109,49 @@ class _CustomerShellState extends State<CustomerShell> {
           phone: '',
           role: UserRole.customer,
         );
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: IndexedStack(index: _index, children: [
-        CustomerHomeTab(
-            user: user,
-            onAmbulanceTap: () => _goTab(1),
-            onBloodTap: () => _goTab(2)),
-        CustomerAmbulanceFlow(user: user),
-        CustomerBloodFlow(user: user),
-        CustomerProfileTab(user: user, customerRow: _customerRow),
-      ]),
-      bottomNavigationBar: ResQBottomNav(
-        currentIndex: _index,
-        onTap: _goTab,
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(Icons.home_rounded), label: 'Home'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.local_shipping_rounded), label: 'Ambulance'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.water_drop_rounded), label: 'Blood'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.person_rounded), label: 'Profile'),
-        ],
+    return WillPopScope(
+      onWillPop: () async {
+        // If not on the home tab, go back to home tab instead of exiting
+        if (_index != 0) {
+          setState(() => _index = 0);
+          return false;
+        }
+        // On home tab: confirm before exiting
+        final shouldExit = await showConfirmDialog(
+          context,
+          title: 'Exit App?',
+          message: 'Do you want to exit ResQLink?',
+          confirmLabel: 'Exit',
+          cancelLabel: 'Stay',
+          danger: true,
+        );
+        return shouldExit == true;
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        body: IndexedStack(index: _index, children: [
+          CustomerHomeTab(
+              user: user,
+              onAmbulanceTap: () => _goTab(1),
+              onBloodTap: () => _goTab(2)),
+          CustomerAmbulanceFlow(user: user),
+          CustomerBloodFlow(user: user),
+          CustomerProfileTab(user: user, customerRow: _customerRow),
+        ]),
+        bottomNavigationBar: ResQBottomNav(
+          currentIndex: _index,
+          onTap: _goTab,
+          items: const [
+            BottomNavigationBarItem(
+                icon: Icon(Icons.home_rounded), label: 'Home'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.local_shipping_rounded), label: 'Ambulance'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.water_drop_rounded), label: 'Blood'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.person_rounded), label: 'Profile'),
+          ],
+        ),
       ),
     );
   }
@@ -610,7 +629,8 @@ class _CustomerAmbulanceFlowState extends State<CustomerAmbulanceFlow> {
   @override
   void initState() {
     super.initState();
-    _autoDetectLocation(); // auto-detect on open
+    // Location is NOT auto-fetched on open.
+    // It is fetched ONLY when the user taps the location icon button.
   }
 
   @override
@@ -2034,7 +2054,10 @@ class _CustomerBloodFlowState extends State<CustomerBloodFlow> {
   @override
   void initState() {
     super.initState();
-    _fetchLocation();
+    // Delay location fetch by 5 seconds to avoid immediate permission dialogs
+    Future.delayed(const Duration(seconds: 5), () {
+      if (mounted) _fetchLocation();
+    });
   }
 
   Future<void> _fetchLocation() async {
@@ -2245,9 +2268,13 @@ class _CustomerBloodFlowState extends State<CustomerBloodFlow> {
       return;
     }
     final units = int.tryParse(_unitsCtrl.text.trim());
-    if (units == null || units <= 0) {
-      showErrorSnack(
-          context, 'Enter a valid number of blood units (must be at least 1)');
+    if (units == null || units < 1) {
+      showErrorSnack(context, 'Enter a valid number of bottles (minimum 1)');
+      Haptics.medium();
+      return;
+    }
+    if (units > 20) {
+      showErrorSnack(context, 'A maximum of 20 bottles can be requested');
       Haptics.medium();
       return;
     }

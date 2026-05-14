@@ -1,4 +1,5 @@
 // modules/donor/donor_shell.dart
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
@@ -37,6 +38,10 @@ class _DonorShellState extends State<DonorShell> {
   Map<String, dynamic>? _donorRow;
   bool _loading = true;
   final _availabilityNotifier = ValueNotifier<bool>(true);
+
+  // Verification gatekeeping
+  String _verificationStatus = 'pending'; // 'pending' | 'approved' | 'rejected'
+  StreamSubscription? _verificationSub;
 
   static final _sb = Supabase.instance.client;
 
@@ -77,10 +82,13 @@ class _DonorShellState extends State<DonorShell> {
             );
             _availabilityNotifier.value =
                 donorRow['is_available'] as bool? ?? true;
+            _verificationStatus =
+                (donorRow['verification_status'] as String?) ?? 'pending';
           }
           _donorRow = donorRow;
           _loading = false;
         });
+        _subscribeVerification(authUser.id);
       }
     } catch (_) {
       if (mounted) {
@@ -100,8 +108,25 @@ class _DonorShellState extends State<DonorShell> {
 
   void _goTab(int i) => setState(() => _index = i);
 
+  void _subscribeVerification(String userId) {
+    _verificationSub?.cancel();
+    _verificationSub = _sb
+        .from('donor_data')
+        .stream(primaryKey: ['donor_id'])
+        .eq('donor_id', userId)
+        .listen((rows) {
+          if (!mounted || rows.isEmpty) return;
+          final newStatus =
+              (rows.first['verification_status'] as String?) ?? 'pending';
+          if (newStatus != _verificationStatus) {
+            setState(() => _verificationStatus = newStatus);
+          }
+        });
+  }
+
   @override
   void dispose() {
+    _verificationSub?.cancel();
     _availabilityNotifier.dispose();
     super.dispose();
   }
@@ -124,38 +149,57 @@ class _DonorShellState extends State<DonorShell> {
           phone: '',
           role: UserRole.donor,
         );
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: IndexedStack(index: _index, children: [
-        DonorHomeTab(
-          user: user,
-          onRequestsTap: () => _goTab(1),
-          onHistoryTap: () => _goTab(2),
-          availabilityNotifier: _availabilityNotifier,
-        ),
-        DonorRequestsTab(
-          user: user,
-          availabilityNotifier: _availabilityNotifier,
-        ),
-        DonorHistoryTab(user: user),
-        DonorProfileTab(
+    return WillPopScope(
+      onWillPop: () async {
+        if (_index != 0) {
+          setState(() => _index = 0);
+          return false;
+        }
+        final shouldExit = await showConfirmDialog(
+          context,
+          title: 'Exit App?',
+          message: 'Do you want to exit ResQLink?',
+          confirmLabel: 'Exit',
+          cancelLabel: 'Stay',
+          danger: true,
+        );
+        return shouldExit == true;
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        body: IndexedStack(index: _index, children: [
+          DonorHomeTab(
             user: user,
-            donorRow: _donorRow,
-            availabilityNotifier: _availabilityNotifier),
-      ]),
-      bottomNavigationBar: ResQBottomNav(
-        currentIndex: _index,
-        onTap: _goTab,
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(Icons.home_rounded), label: 'Home'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.water_drop), label: 'Requests'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.history_rounded), label: 'History'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.person_rounded), label: 'Profile'),
-        ],
+            onRequestsTap: () => _goTab(1),
+            onHistoryTap: () => _goTab(2),
+            availabilityNotifier: _availabilityNotifier,
+            verificationStatus: _verificationStatus,
+          ),
+          DonorRequestsTab(
+            user: user,
+            availabilityNotifier: _availabilityNotifier,
+            verificationStatus: _verificationStatus,
+          ),
+          DonorHistoryTab(user: user),
+          DonorProfileTab(
+              user: user,
+              donorRow: _donorRow,
+              availabilityNotifier: _availabilityNotifier),
+        ]),
+        bottomNavigationBar: ResQBottomNav(
+          currentIndex: _index,
+          onTap: _goTab,
+          items: const [
+            BottomNavigationBarItem(
+                icon: Icon(Icons.home_rounded), label: 'Home'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.water_drop), label: 'Requests'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.history_rounded), label: 'History'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.person_rounded), label: 'Profile'),
+          ],
+        ),
       ),
     );
   }
@@ -170,6 +214,7 @@ class DonorHomeTab extends StatefulWidget {
   final VoidCallback onRequestsTap;
   final VoidCallback onHistoryTap;
   final ValueNotifier<bool> availabilityNotifier;
+  final String verificationStatus;
 
   const DonorHomeTab({
     super.key,
@@ -177,6 +222,7 @@ class DonorHomeTab extends StatefulWidget {
     required this.onRequestsTap,
     required this.onHistoryTap,
     required this.availabilityNotifier,
+    this.verificationStatus = 'pending',
   });
 
   @override
@@ -207,6 +253,50 @@ class _DonorHomeTabState extends State<DonorHomeTab>
           padding: const EdgeInsets.only(bottom: 24),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            // ── Verification banner ───────────────────────────────────────
+            if (widget.verificationStatus != 'approved')
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(20, 52, 20, -8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: widget.verificationStatus == 'rejected'
+                      ? const Color(0xFF2A0000)
+                      : const Color(0xFF1A1200),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: widget.verificationStatus == 'rejected'
+                        ? AppColors.red.withValues(alpha: 0.6)
+                        : Colors.amber.withValues(alpha: 0.6),
+                  ),
+                ),
+                child: Row(children: [
+                  Icon(
+                    widget.verificationStatus == 'rejected'
+                        ? Icons.cancel_rounded
+                        : Icons.hourglass_top_rounded,
+                    color: widget.verificationStatus == 'rejected'
+                        ? AppColors.red
+                        : Colors.amber,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      widget.verificationStatus == 'rejected'
+                          ? 'Verification rejected — contact support.'
+                          : 'Account under review. Donation features locked until approved.',
+                      style: AppTextStyles.body(
+                        size: 12,
+                        color: widget.verificationStatus == 'rejected'
+                            ? AppColors.red
+                            : Colors.amber,
+                      ),
+                    ),
+                  ),
+                ]),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 56, 20, 20),
               child: Row(
@@ -366,10 +456,12 @@ class _DonorHomeTabState extends State<DonorHomeTab>
 class DonorRequestsTab extends StatefulWidget {
   final AppUser user;
   final ValueNotifier<bool> availabilityNotifier;
+  final String verificationStatus;
   const DonorRequestsTab({
     super.key,
     required this.user,
     required this.availabilityNotifier,
+    this.verificationStatus = 'pending',
   });
   @override
   State<DonorRequestsTab> createState() => _DonorRequestsTabState();
@@ -506,6 +598,22 @@ class _DonorRequestsTabState extends State<DonorRequestsTab>
         body: ValueListenableBuilder<bool>(
           valueListenable: widget.availabilityNotifier,
           builder: (_, available, __) {
+            // Gate 1: Verification status
+            if (widget.verificationStatus != 'approved') {
+              final isRejected = widget.verificationStatus == 'rejected';
+              return EmptyState(
+                icon: isRejected
+                    ? Icons.cancel_rounded
+                    : Icons.hourglass_top_rounded,
+                title: isRejected
+                    ? 'Verification Rejected'
+                    : 'Pending Admin Verification',
+                subtitle: isRejected
+                    ? 'Your documents were not approved. Please contact support.'
+                    : 'Your account is under review.\nYou will be notified once approved.',
+              );
+            }
+            // Gate 2: Availability
             if (!available) {
               return const EmptyState(
                 icon: Icons.do_not_disturb_alt_rounded,

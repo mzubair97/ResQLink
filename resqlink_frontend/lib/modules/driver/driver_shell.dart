@@ -54,6 +54,10 @@ class _DriverShellState extends State<DriverShell> {
   final _tripsKey = GlobalKey<_DriverTripsTabState>();
   Map<String, dynamic>? _activeRequest;
 
+  // Verification gatekeeping
+  String _verificationStatus = 'pending'; // 'pending' | 'approved' | 'rejected'
+  StreamSubscription? _verificationSub;
+
   static final _sb = Supabase.instance.client;
 
   @override
@@ -80,13 +84,33 @@ class _DriverShellState extends State<DriverShell> {
           if (driverRow != null) {
             _driverRow = driverRow;
             _onDuty = driverRow['is_on_duty'] ?? false;
+            _verificationStatus =
+                (driverRow['verification_status'] as String?) ?? 'pending';
           }
           _loading = false;
         });
+        // Subscribe to real-time status changes
+        _subscribeVerification(authUser.id);
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  void _subscribeVerification(String userId) {
+    _verificationSub?.cancel();
+    _verificationSub = _sb
+        .from('drivers')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId)
+        .listen((rows) {
+          if (!mounted || rows.isEmpty) return;
+          final newStatus =
+              (rows.first['verification_status'] as String?) ?? 'pending';
+          if (newStatus != _verificationStatus) {
+            setState(() => _verificationStatus = newStatus);
+          }
+        });
   }
 
   Future<void> _setOnDuty(bool value) async {
@@ -109,6 +133,12 @@ class _DriverShellState extends State<DriverShell> {
   void _goTab(int i) => setState(() => _index = i);
 
   @override
+  void dispose() {
+    _verificationSub?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     if (_loading) {
       return Scaffold(
@@ -119,54 +149,72 @@ class _DriverShellState extends State<DriverShell> {
       );
     }
     final user = _user ?? AppUser.mockDriver();
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: IndexedStack(index: _index, children: [
-        DriverHomeTab(
-          user: user,
-          driverRow: _driverRow,
-          onDispatch: () => _goTab(1),
-          onDuty: _onDuty,
-          loadingDuty: _loadingDuty,
-          onDutyChanged: _setOnDuty,
-          onSeeAllTap: () => _goTab(2),
-          onRequestAccepted: (req) {
-            setState(() => _activeRequest = req);
-            _goTab(1);
-          },
-        ),
-        DriverRideFlow(
-          user: user,
-          activeRequest: _activeRequest,
-          onComplete: () {
-            setState(() => _activeRequest = null);
-            _goTab(2);
-            // FIX: trigger trip reload after delay for DB to commit
-            Future.delayed(const Duration(milliseconds: 1500), () {
-              _tripsKey.currentState?._refresh();
-            });
-          },
-        ),
-        DriverTripsTab(key: _tripsKey, user: user, driverRow: _driverRow),
-        DriverProfileTab(
+    return WillPopScope(
+      onWillPop: () async {
+        if (_index != 0) {
+          setState(() => _index = 0);
+          return false;
+        }
+        final shouldExit = await showConfirmDialog(
+          context,
+          title: 'Exit App?',
+          message: 'Do you want to exit ResQLink?',
+          confirmLabel: 'Exit',
+          cancelLabel: 'Stay',
+          danger: true,
+        );
+        return shouldExit == true;
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        body: IndexedStack(index: _index, children: [
+          DriverHomeTab(
             user: user,
+            driverRow: _driverRow,
+            onDispatch: () => _goTab(1),
             onDuty: _onDuty,
             loadingDuty: _loadingDuty,
-            onDutyChanged: _setOnDuty),
-      ]),
-      bottomNavigationBar: ResQBottomNav(
-        currentIndex: _index,
-        onTap: _goTab,
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(Icons.home_rounded), label: 'Home'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.map_rounded), label: 'Live Map'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.receipt_long_rounded), label: 'Trips'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.person_rounded), label: 'Profile'),
-        ],
+            onDutyChanged: _setOnDuty,
+            onSeeAllTap: () => _goTab(2),
+            verificationStatus: _verificationStatus,
+            onRequestAccepted: (req) {
+              setState(() => _activeRequest = req);
+              _goTab(1);
+            },
+          ),
+          DriverRideFlow(
+            user: user,
+            activeRequest: _activeRequest,
+            onComplete: () {
+              setState(() => _activeRequest = null);
+              _goTab(2);
+              // FIX: trigger trip reload after delay for DB to commit
+              Future.delayed(const Duration(milliseconds: 1500), () {
+                _tripsKey.currentState?._refresh();
+              });
+            },
+          ),
+          DriverTripsTab(key: _tripsKey, user: user, driverRow: _driverRow),
+          DriverProfileTab(
+              user: user,
+              onDuty: _onDuty,
+              loadingDuty: _loadingDuty,
+              onDutyChanged: _setOnDuty),
+        ]),
+        bottomNavigationBar: ResQBottomNav(
+          currentIndex: _index,
+          onTap: _goTab,
+          items: const [
+            BottomNavigationBarItem(
+                icon: Icon(Icons.home_rounded), label: 'Home'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.map_rounded), label: 'Live Map'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.receipt_long_rounded), label: 'Trips'),
+            BottomNavigationBarItem(
+                icon: Icon(Icons.person_rounded), label: 'Profile'),
+          ],
+        ),
       ),
     );
   }
@@ -185,6 +233,7 @@ class DriverHomeTab extends StatefulWidget {
   final Future<void> Function(bool) onDutyChanged;
   final VoidCallback onSeeAllTap;
   final void Function(Map<String, dynamic>) onRequestAccepted;
+  final String verificationStatus; // 'pending' | 'approved' | 'rejected'
 
   const DriverHomeTab({
     super.key,
@@ -196,6 +245,7 @@ class DriverHomeTab extends StatefulWidget {
     required this.onDutyChanged,
     required this.onSeeAllTap,
     required this.onRequestAccepted,
+    this.verificationStatus = 'pending',
   });
 
   @override
@@ -449,6 +499,64 @@ class _DriverHomeTabState extends State<DriverHomeTab>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ── Verification banner (shown when not approved) ────────────
+              if (widget.verificationStatus != 'approved')
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: widget.verificationStatus == 'rejected'
+                        ? const Color(0xFF2A0000)
+                        : const Color(0xFF1A1200),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: widget.verificationStatus == 'rejected'
+                          ? AppColors.red.withValues(alpha: 0.6)
+                          : Colors.amber.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  child: Row(children: [
+                    Icon(
+                      widget.verificationStatus == 'rejected'
+                          ? Icons.cancel_rounded
+                          : Icons.hourglass_top_rounded,
+                      color: widget.verificationStatus == 'rejected'
+                          ? AppColors.red
+                          : Colors.amber,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.verificationStatus == 'rejected'
+                                ? 'Verification Rejected'
+                                : 'Pending Admin Verification',
+                            style: AppTextStyles.bodyMedium(
+                              size: 13,
+                              color: widget.verificationStatus == 'rejected'
+                                  ? AppColors.red
+                                  : Colors.amber,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            widget.verificationStatus == 'rejected'
+                                ? 'Your documents were not approved. Contact support.'
+                                : 'Your account is under review. You cannot go on duty until approved.',
+                            style: AppTextStyles.body(
+                                size: 11,
+                                color: AppColors.white40),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ]),
+                ),
               // ── Offline banner ───────────────────────────────────────
               if (!_isOnline)
                 Container(
@@ -511,10 +619,13 @@ class _DriverHomeTabState extends State<DriverHomeTab>
                         : 'Switch to on duty',
                     child: Switch(
                       value: widget.onDuty,
-                      onChanged: (v) {
-                        Haptics.medium();
-                        widget.onDutyChanged(v);
-                      },
+                      // Disable switch unless approved
+                      onChanged: widget.verificationStatus == 'approved'
+                          ? (v) {
+                              Haptics.medium();
+                              widget.onDutyChanged(v);
+                            }
+                          : null,
                     ),
                   ),
                   const SizedBox(width: 8),
