@@ -13,7 +13,7 @@ import '../../widgets/animated_press_button.dart';
 import '../../models/app_models.dart';
 import '../../services/app_service.dart';
 import '../customer/customer_shell.dart';
-import '../donor/donor_shell (2).dart';
+import '../donor/donor_shell.dart';
 import '../driver/driver_shell.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
@@ -279,8 +279,10 @@ class _LoginScreenState extends State<LoginScreen> {
       final atIdx = email.indexOf('@');
       final hasAt = atIdx > 0;
       final domainPart = hasAt ? email.substring(atIdx + 1) : '';
-      final hasDomainDot = domainPart.contains('.') && !domainPart.endsWith('.');
-      if (!hasAt || !hasDomainDot) eErr = 'Enter a valid email (e.g. user@example.com)';
+      final hasDomainDot =
+          domainPart.contains('.') && !domainPart.endsWith('.');
+      if (!hasAt || !hasDomainDot)
+        eErr = 'Enter a valid email (e.g. user@example.com)';
     }
     if (pass.isEmpty) pErr = 'Password is required';
     setState(() {
@@ -497,7 +499,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     final domainPart = hasAt ? email.substring(atIdx + 1) : '';
     final hasDomainDot = domainPart.contains('.') && !domainPart.endsWith('.');
     if (!hasAt || !hasDomainDot) {
-      setState(() => _emailError = 'Enter a valid email (e.g. user@example.com)');
+      setState(
+          () => _emailError = 'Enter a valid email (e.g. user@example.com)');
       Haptics.medium();
       return;
     }
@@ -794,7 +797,8 @@ class _RoleCard extends StatelessWidget {
                 ),
               ),
               if (isSelected)
-                const Icon(Icons.check_circle, color: AppColors.green, size: 22),
+                const Icon(Icons.check_circle,
+                    color: AppColors.green, size: 22),
             ]),
           ),
         ),
@@ -871,6 +875,43 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   bool get _isCustomer => widget.role == UserRole.customer;
+
+  List<String> get _requiredDocumentTypes {
+    if (widget.role == UserRole.driver) {
+      return const [
+        'government_id',
+        'driver_license',
+        'vehicle_registration',
+        'profile_photo',
+      ];
+    }
+    if (widget.role == UserRole.donor) {
+      return const [
+        'government_id',
+        'medical_certificate',
+        'profile_photo',
+      ];
+    }
+    return const [];
+  }
+
+  bool _validateRequiredDocuments() {
+    if (_uploadingDocs.values.any((uploading) => uploading)) {
+      showErrorSnack(context, 'Please wait for document selection to finish');
+      Haptics.medium();
+      return false;
+    }
+    final missing = _requiredDocumentTypes
+        .where((type) => _uploadedDocs[type] == null)
+        .toList();
+    if (missing.isNotEmpty) {
+      showErrorSnack(context, 'Please upload all required documents');
+      Haptics.medium();
+      return false;
+    }
+    return true;
+  }
+
   void _nextStep() async {
     if (_step == 0) {
       if (!_validateDetails()) return;
@@ -897,8 +938,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         _startResendTimer();
       }
     } else if (_step == 1) {
-      showSuccessSnack(
-          context, 'Documents noted. You can upload later in Profile.');
+      if (!_validateRequiredDocuments()) return;
       Haptics.medium();
       // Register in Supabase — this sends the OTP email automatically
       try {
@@ -916,6 +956,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         return;
       }
       setState(() => _step = 2);
+      showSuccessSnack(context, 'Documents selected. Verification code sent.');
       _startResendTimer();
     }
   }
@@ -970,7 +1011,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
       final atIdx = email.indexOf('@');
       final hasAt = atIdx > 0;
       final domainPart = hasAt ? email.substring(atIdx + 1) : '';
-      final hasDomainDot = domainPart.contains('.') && !domainPart.endsWith('.');
+      final hasDomainDot =
+          domainPart.contains('.') && !domainPart.endsWith('.');
       if (!hasAt || !hasDomainDot) {
         emErr = 'Enter a valid email (e.g. user@example.com)';
       }
@@ -990,7 +1032,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
       if (license.isEmpty) {
         lErr = 'License number is required';
       } else if (!_pakLicenseRegex.hasMatch(license)) {
-        lErr = 'Invalid format. Use province-code format (e.g. LHR-1234567) or CNIC format (12345-6789012-3)';
+        lErr =
+            'Invalid format. Use province-code format (e.g. LHR-1234567) or CNIC format (12345-6789012-3)';
       }
     }
 
@@ -1034,6 +1077,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
         'password': _passCtrl.text,
         'license': _licenseCtrl.text,
         'bloodType': _selectedBloodGroup ?? '',
+        'documentPaths': Map<String, String?>.from(_uploadedDocs),
         'profilePhotoPath': _uploadedDocs['profile_photo'], // ← ADD THIS LINE
       }, widget.role);
       if (!mounted) return;
@@ -1205,7 +1249,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
               final atIdx = v.indexOf('@');
               final hasAt = atIdx > 0;
               final domainPart = hasAt ? v.substring(atIdx + 1) : '';
-              _emailValid = hasAt && domainPart.contains('.') && !domainPart.endsWith('.');
+              _emailValid = hasAt &&
+                  domainPart.contains('.') &&
+                  !domainPart.endsWith('.');
             }),
           ),
           const SizedBox(height: 14),

@@ -83,12 +83,19 @@ class _DriverShellState extends State<DriverShell> {
               AppUser.fromProfile(profile, authUser.id, authUser.email ?? '');
           if (driverRow != null) {
             _driverRow = driverRow;
-            _onDuty = driverRow['is_on_duty'] ?? false;
-            _verificationStatus =
+            final status =
                 (driverRow['verification_status'] as String?) ?? 'pending';
+            _verificationStatus = status;
+            _onDuty = status == 'approved'
+                ? (driverRow['is_on_duty'] as bool? ?? false)
+                : false;
           }
           _loading = false;
         });
+        if (_verificationStatus != 'approved' &&
+            driverRow?['is_on_duty'] == true) {
+          _setOnDuty(false, notify: false);
+        }
         // Subscribe to real-time status changes
         _subscribeVerification(authUser.id);
       }
@@ -110,10 +117,19 @@ class _DriverShellState extends State<DriverShell> {
           if (newStatus != _verificationStatus) {
             setState(() => _verificationStatus = newStatus);
           }
+          if (newStatus != 'approved' && _onDuty) {
+            _setOnDuty(false, notify: false);
+          }
         });
   }
 
-  Future<void> _setOnDuty(bool value) async {
+  Future<void> _setOnDuty(bool value, {bool notify = true}) async {
+    if (value && _verificationStatus != 'approved') {
+      if (mounted && notify) {
+        showErrorSnack(context, 'You cannot go on duty until admin approval.');
+      }
+      return;
+    }
     setState(() => _loadingDuty = true);
     try {
       await _sb.from('drivers').update({'is_on_duty': value}).eq(
@@ -199,7 +215,8 @@ class _DriverShellState extends State<DriverShell> {
               user: user,
               onDuty: _onDuty,
               loadingDuty: _loadingDuty,
-              onDutyChanged: _setOnDuty),
+              onDutyChanged: _setOnDuty,
+              verificationStatus: _verificationStatus),
         ]),
         bottomNavigationBar: ResQBottomNav(
           currentIndex: _index,
@@ -504,8 +521,8 @@ class _DriverHomeTabState extends State<DriverHomeTab>
                 Container(
                   width: double.infinity,
                   margin: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: widget.verificationStatus == 'rejected'
                         ? const Color(0xFF2A0000)
@@ -549,8 +566,7 @@ class _DriverHomeTabState extends State<DriverHomeTab>
                                 ? 'Your documents were not approved. Contact support.'
                                 : 'Your account is under review. You cannot go on duty until approved.',
                             style: AppTextStyles.body(
-                                size: 11,
-                                color: AppColors.white40),
+                                size: 11, color: AppColors.white40),
                           ),
                         ],
                       ),
@@ -2577,6 +2593,7 @@ class DriverProfileTab extends StatefulWidget {
   final bool onDuty;
   final bool loadingDuty;
   final Future<void> Function(bool) onDutyChanged;
+  final String verificationStatus;
 
   const DriverProfileTab({
     super.key,
@@ -2584,6 +2601,7 @@ class DriverProfileTab extends StatefulWidget {
     required this.onDuty,
     required this.loadingDuty,
     required this.onDutyChanged,
+    this.verificationStatus = 'pending',
   });
 
   @override
@@ -2906,10 +2924,12 @@ class _DriverProfileTabState extends State<DriverProfileTab> {
                   label: widget.onDuty ? 'Set off duty' : 'Set on duty',
                   child: Switch(
                     value: widget.onDuty,
-                    onChanged: (v) {
-                      Haptics.medium();
-                      widget.onDutyChanged(v);
-                    },
+                    onChanged: widget.verificationStatus == 'approved'
+                        ? (v) {
+                            Haptics.medium();
+                            widget.onDutyChanged(v);
+                          }
+                        : null,
                   ),
                 ),
             ]),

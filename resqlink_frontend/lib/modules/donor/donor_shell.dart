@@ -37,7 +37,7 @@ class _DonorShellState extends State<DonorShell> {
   AppUser? _user;
   Map<String, dynamic>? _donorRow;
   bool _loading = true;
-  final _availabilityNotifier = ValueNotifier<bool>(true);
+  final _availabilityNotifier = ValueNotifier<bool>(false);
 
   // Verification gatekeeping
   String _verificationStatus = 'pending'; // 'pending' | 'approved' | 'rejected'
@@ -80,14 +80,20 @@ class _DonorShellState extends State<DonorShell> {
               avatarUrl: _user!.avatarUrl,
               location: _user!.location,
             );
-            _availabilityNotifier.value =
-                donorRow['is_available'] as bool? ?? true;
-            _verificationStatus =
+            final status =
                 (donorRow['verification_status'] as String?) ?? 'pending';
+            final isAvailable = donorRow['is_available'] as bool? ?? false;
+            _verificationStatus = status;
+            _availabilityNotifier.value =
+                status == 'approved' ? isAvailable : false;
           }
           _donorRow = donorRow;
           _loading = false;
         });
+        if (_verificationStatus != 'approved' &&
+            donorRow?['is_available'] == true) {
+          _setAvailability(false, notify: false);
+        }
         _subscribeVerification(authUser.id);
       }
     } catch (_) {
@@ -108,6 +114,25 @@ class _DonorShellState extends State<DonorShell> {
 
   void _goTab(int i) => setState(() => _index = i);
 
+  Future<void> _setAvailability(bool value, {bool notify = true}) async {
+    if (value && _verificationStatus != 'approved') {
+      _availabilityNotifier.value = false;
+      if (mounted && notify) {
+        showErrorSnack(
+            context, 'You cannot turn on availability until admin approval.');
+      }
+      return;
+    }
+    _availabilityNotifier.value = value;
+    try {
+      await _sb.from('donor_data').update({'is_available': value}).eq(
+          'donor_id', _sb.auth.currentUser!.id);
+    } catch (e) {
+      _availabilityNotifier.value = !value;
+      if (mounted) showErrorSnack(context, 'Availability update failed: $e');
+    }
+  }
+
   void _subscribeVerification(String userId) {
     _verificationSub?.cancel();
     _verificationSub = _sb
@@ -120,6 +145,9 @@ class _DonorShellState extends State<DonorShell> {
               (rows.first['verification_status'] as String?) ?? 'pending';
           if (newStatus != _verificationStatus) {
             setState(() => _verificationStatus = newStatus);
+          }
+          if (newStatus != 'approved' && _availabilityNotifier.value) {
+            _setAvailability(false, notify: false);
           }
         });
   }
@@ -173,6 +201,7 @@ class _DonorShellState extends State<DonorShell> {
             onRequestsTap: () => _goTab(1),
             onHistoryTap: () => _goTab(2),
             availabilityNotifier: _availabilityNotifier,
+            onAvailabilityChanged: _setAvailability,
             verificationStatus: _verificationStatus,
           ),
           DonorRequestsTab(
@@ -184,7 +213,9 @@ class _DonorShellState extends State<DonorShell> {
           DonorProfileTab(
               user: user,
               donorRow: _donorRow,
-              availabilityNotifier: _availabilityNotifier),
+              availabilityNotifier: _availabilityNotifier,
+              onAvailabilityChanged: _setAvailability,
+              verificationStatus: _verificationStatus),
         ]),
         bottomNavigationBar: ResQBottomNav(
           currentIndex: _index,
@@ -214,6 +245,7 @@ class DonorHomeTab extends StatefulWidget {
   final VoidCallback onRequestsTap;
   final VoidCallback onHistoryTap;
   final ValueNotifier<bool> availabilityNotifier;
+  final Future<void> Function(bool) onAvailabilityChanged;
   final String verificationStatus;
 
   const DonorHomeTab({
@@ -222,6 +254,7 @@ class DonorHomeTab extends StatefulWidget {
     required this.onRequestsTap,
     required this.onHistoryTap,
     required this.availabilityNotifier,
+    required this.onAvailabilityChanged,
     this.verificationStatus = 'pending',
   });
 
@@ -257,7 +290,7 @@ class _DonorHomeTabState extends State<DonorHomeTab>
             if (widget.verificationStatus != 'approved')
               Container(
                 width: double.infinity,
-                margin: const EdgeInsets.fromLTRB(20, 52, 20, -8),
+                margin: const EdgeInsets.fromLTRB(20, 52, 20, 0),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
@@ -344,10 +377,12 @@ class _DonorHomeTabState extends State<DonorHomeTab>
                       const SizedBox(height: 4),
                       Switch(
                         value: available,
-                        onChanged: (v) {
-                          Haptics.medium();
-                          widget.availabilityNotifier.value = v;
-                        },
+                        onChanged: widget.verificationStatus == 'approved'
+                            ? (v) {
+                                Haptics.medium();
+                                widget.onAvailabilityChanged(v);
+                              }
+                            : null,
                       ),
                     ]),
                   ],
@@ -740,10 +775,24 @@ class _DonorRequestsTabState extends State<DonorRequestsTab>
                           );
                           if (ok == true) {
                             Haptics.heavy();
-                            setState(() {
-                              _selected = requests[i];
-                              _accepted = true;
-                            });
+                            try {
+                              await DonationService.acceptDonationRequest(
+                                  requests[i].id, widget.user.id);
+                              if (mounted) {
+                                setState(() {
+                                  _selected = requests[i];
+                                  _accepted = true;
+                                });
+                              }
+                            } catch (e) {
+                              if (mounted) {
+                                showErrorSnack(
+                                    context,
+                                    e
+                                        .toString()
+                                        .replaceFirst('Exception: ', ''));
+                              }
+                            }
                           }
                         },
                         onView: () => setState(() => _selected = requests[i]),
@@ -858,23 +907,7 @@ class _DonorRequestsTabState extends State<DonorRequestsTab>
           const SizedBox(height: 28),
           if (!accepted) ...[
             AnimatedPressButton(
-              onTap: () async {
-                final ok = await showConfirmDialog(
-                  context,
-                  title: 'Accept Donation Request?',
-                  message:
-                      'Confirm availability to donate ${req.bloodType} at ${req.hospital}.',
-                  confirmLabel: 'Accept',
-                  cancelLabel: 'Cancel',
-                );
-                if (ok == true) {
-                  Haptics.heavy();
-                  setState(() {
-                    _selected = req;
-                    _accepted = true;
-                  });
-                }
-              },
+              onTap: null,
               child: ElevatedButton(
                 onPressed: () async {
                   // 🔴 CHECK BLOOD TYPE MATCH FIRST
@@ -943,10 +976,21 @@ class _DonorRequestsTabState extends State<DonorRequestsTab>
                   );
                   if (ok == true) {
                     Haptics.heavy();
-                    setState(() {
-                      _selected = req;
-                      _accepted = true;
-                    });
+                    try {
+                      await DonationService.acceptDonationRequest(
+                          req.id, widget.user.id);
+                      if (mounted) {
+                        setState(() {
+                          _selected = req;
+                          _accepted = true;
+                        });
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        showErrorSnack(context,
+                            e.toString().replaceFirst('Exception: ', ''));
+                      }
+                    }
                   }
                 },
                 child: Row(mainAxisSize: MainAxisSize.min, children: const [
@@ -1104,24 +1148,12 @@ class _DonorRequestsTabState extends State<DonorRequestsTab>
           const SizedBox(height: 24),
 
           AnimatedPressButton(
-            onTap: () async {
-              Haptics.heavy();
-              try {
-                await DonationService.acceptDonationRequest(
-                    _selected?.id ?? '', widget.user.id);
-                if (mounted) setState(() => _done = true);
-              } catch (e) {
-                if (mounted && !_done) {
-                  showErrorSnack(
-                      context, e.toString().replaceFirst('Exception: ', ''));
-                }
-              }
-            },
+            onTap: null,
             child: ElevatedButton(
               onPressed: () async {
                 Haptics.heavy();
                 try {
-                  await DonationService.acceptDonationRequest(
+                  await DonationService.completeDonationRequest(
                       _selected?.id ?? '', widget.user.id);
                   if (mounted) setState(() => _done = true);
                 } catch (e) {
@@ -2366,12 +2398,16 @@ class DonorProfileTab extends StatefulWidget {
   final AppUser user;
   final Map<String, dynamic>? donorRow;
   final ValueNotifier<bool> availabilityNotifier;
+  final Future<void> Function(bool) onAvailabilityChanged;
+  final String verificationStatus;
 
   const DonorProfileTab({
     super.key,
     required this.user,
     this.donorRow,
     required this.availabilityNotifier,
+    required this.onAvailabilityChanged,
+    this.verificationStatus = 'pending',
   });
 
   @override
@@ -2432,7 +2468,9 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
             donorData?['address'] as String? ?? widget.user.location ?? '';
         if (donorData != null) {
           widget.availabilityNotifier.value =
-              donorData['is_available'] as bool? ?? true;
+              widget.verificationStatus == 'approved'
+                  ? (donorData['is_available'] as bool? ?? false)
+                  : false;
         }
         _initialLoading = false;
       });
@@ -2459,7 +2497,9 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
       }).eq('id', userId);
       await _sb.from('donor_data').upsert({
         'donor_id': userId,
-        'is_available': widget.availabilityNotifier.value,
+        'is_available': widget.verificationStatus == 'approved'
+            ? widget.availabilityNotifier.value
+            : false,
         'address': _locationCtrl.text.trim(),
       }, onConflict: 'donor_id');
       if (mounted) showSuccessSnack(context, 'Profile updated!');
@@ -2613,10 +2653,12 @@ class _DonorProfileTabState extends State<DonorProfileTab> {
                   label: available ? 'Mark unavailable' : 'Mark available',
                   child: Switch(
                     value: available,
-                    onChanged: (v) {
-                      Haptics.medium();
-                      widget.availabilityNotifier.value = v;
-                    },
+                    onChanged: widget.verificationStatus == 'approved'
+                        ? (v) {
+                            Haptics.medium();
+                            widget.onAvailabilityChanged(v);
+                          }
+                        : null,
                   ),
                 ),
               ]),

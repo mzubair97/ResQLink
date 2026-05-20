@@ -60,6 +60,7 @@ class DonationService {
       String requestId, String donorId) async {
     final reqId = int.tryParse(requestId);
     if (reqId == null) throw Exception('Invalid request ID: $requestId');
+    final now = DateTime.now().toUtc().toIso8601String();
 
     // Check if this donor already accepted this request
     final existing = await _sb
@@ -76,6 +77,7 @@ class DonationService {
       'request_id': reqId,
       'donor_id': donorId,
       'status': 'accepted',
+      'accepted_at': now,
     });
 
     // Read current progress
@@ -100,5 +102,26 @@ class DonationService {
         'accepted_units': newAccepted,
       }).eq('id', reqId);
     }
+  }
+
+  static Future<void> completeDonationRequest(
+      String requestId, String donorId) async {
+    final reqId = int.tryParse(requestId);
+    if (reqId == null) throw Exception('Invalid request ID: $requestId');
+
+    final existing = await _sb
+        .from('donations')
+        .select('id')
+        .eq('request_id', reqId)
+        .eq('donor_id', donorId)
+        .maybeSingle();
+    if (existing == null) {
+      throw Exception('Accept this request before marking it complete.');
+    }
+
+    await _sb.from('donations').update({
+      'status': 'completed',
+      'completed_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', existing['id']);
   }
 }

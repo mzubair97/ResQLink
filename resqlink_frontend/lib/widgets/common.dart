@@ -155,9 +155,11 @@ class SectionHeader extends StatelessWidget {
                   onAction?.call();
                 },
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                   child: Text(actionLabel!,
-                      style: AppTextStyles.body(size: 12, color: AppColors.red)),
+                      style:
+                          AppTextStyles.body(size: 12, color: AppColors.red)),
                 ),
               ),
           ],
@@ -251,8 +253,8 @@ class AlertBanner extends StatelessWidget {
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration:
-                    BoxDecoration(color: c, borderRadius: BorderRadius.circular(6)),
+                decoration: BoxDecoration(
+                    color: c, borderRadius: BorderRadius.circular(6)),
                 child: Text(actionLabel!,
                     style: AppTextStyles.bodyMedium(size: 12)),
               ),
@@ -293,8 +295,7 @@ class DonationHistoryTile extends StatelessWidget {
         ),
         child: Row(children: [
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
             decoration: BoxDecoration(
               color: AppColors.redDim,
               borderRadius: BorderRadius.circular(8),
@@ -459,8 +460,7 @@ class _LocationFieldState extends State<LocationField> {
           style: AppTextStyles.body(size: 14, color: AppColors.white70),
           decoration: InputDecoration(
             hintText: widget.hint,
-            hintStyle:
-                AppTextStyles.body(size: 14, color: AppColors.white40),
+            hintStyle: AppTextStyles.body(size: 14, color: AppColors.white40),
             prefixIcon: const Icon(Icons.location_on_outlined,
                 color: AppColors.white40, size: 18),
             suffixIcon: _detecting
@@ -503,8 +503,8 @@ class LoadingOverlay extends StatelessWidget {
             if (message != null) ...[
               const SizedBox(height: 16),
               Text(message!,
-                  style: AppTextStyles.body(
-                      size: 14, color: AppColors.white70)),
+                  style:
+                      AppTextStyles.body(size: 14, color: AppColors.white70)),
             ],
           ]),
         ),
@@ -558,8 +558,7 @@ Future<bool?> showConfirmDialog(
     context: context,
     builder: (ctx) => AlertDialog(
       backgroundColor: AppColors.surface2,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       title: Text(title, style: AppTextStyles.bodyMedium(size: 17)),
       content: Text(message,
           style: AppTextStyles.body(size: 14, color: AppColors.white60)),
@@ -570,8 +569,7 @@ Future<bool?> showConfirmDialog(
             Navigator.pop(ctx, false);
           },
           child: Text(cancelLabel,
-              style:
-                  AppTextStyles.body(size: 14, color: AppColors.white40)),
+              style: AppTextStyles.body(size: 14, color: AppColors.white40)),
         ),
         TextButton(
           onPressed: () {
@@ -601,8 +599,7 @@ Future<void> showFilePicker(BuildContext context,
     context: context,
     builder: (ctx) => AlertDialog(
       backgroundColor: AppColors.surface2,
-      shape:
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       title: Text(title, style: AppTextStyles.bodyMedium(size: 16)),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         _fileOption(ctx, Icons.folder_open_rounded, 'Browse Files'),
@@ -623,8 +620,7 @@ Widget _fileOption(BuildContext ctx, IconData icon, String label) => InkWell(
         Navigator.pop(ctx);
       },
       child: Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(10),
@@ -678,15 +674,14 @@ class EmptyState extends StatelessWidget {
                 textAlign: TextAlign.center),
             const SizedBox(height: 8),
             Text(subtitle,
-                style: AppTextStyles.body(
-                    size: 14, color: AppColors.white40),
+                style: AppTextStyles.body(size: 14, color: AppColors.white40),
                 textAlign: TextAlign.center),
             if (onRetry != null) ...[
               const SizedBox(height: 24),
               OutlinedButton(
                 onPressed: onRetry,
-                style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(140, 44)),
+                style:
+                    OutlinedButton.styleFrom(minimumSize: const Size(140, 44)),
                 child: Text(
                   retryLabel ?? 'Retry',
                   style: AppTextStyles.body(size: 14),
@@ -773,12 +768,12 @@ class MapGridPainter extends CustomPainter {
     for (double y = 0; y < size.height; y += step) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
     }
-    canvas.drawLine(
-        Offset(size.width * 0.3, 0), Offset(size.width * 0.45, size.height), road);
-    canvas.drawLine(
-        Offset(0, size.height * 0.45), Offset(size.width, size.height * 0.52), road);
-    canvas.drawLine(
-        Offset(size.width * 0.62, 0), Offset(size.width * 0.75, size.height), road);
+    canvas.drawLine(Offset(size.width * 0.3, 0),
+        Offset(size.width * 0.45, size.height), road);
+    canvas.drawLine(Offset(0, size.height * 0.45),
+        Offset(size.width, size.height * 0.52), road);
+    canvas.drawLine(Offset(size.width * 0.62, 0),
+        Offset(size.width * 0.75, size.height), road);
   }
 
   @override

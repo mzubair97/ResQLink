@@ -42,13 +42,15 @@ class _ResQLinkAppState extends State<ResQLinkApp> {
   @override
   void initState() {
     super.initState();
-    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+    _authSubscription =
+        Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       final AuthChangeEvent event = data.event;
       if (event == AuthChangeEvent.passwordRecovery) {
         _navigatorKey.currentState?.pushReplacement(
           PageRouteBuilder(
             pageBuilder: (_, __, ___) => const UpdatePasswordScreen(),
-            transitionsBuilder: (_, a, __, child) => FadeTransition(opacity: a, child: child),
+            transitionsBuilder: (_, a, __, child) =>
+                FadeTransition(opacity: a, child: child),
             transitionDuration: const Duration(milliseconds: 400),
           ),
         );
@@ -74,4 +76,3 @@ class _ResQLinkAppState extends State<ResQLinkApp> {
     );
   }
 }
-

@@ -1,6 +1,7 @@
 // services/auth_service.dart
 
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:io';
 import '../models/app_models.dart';
 import 'mock_otp_service.dart';
 import 'storage_service.dart';
@@ -56,8 +57,6 @@ class AuthService {
     if (role == UserRole.driver) {
       await _sb.from('drivers').insert({
         'user_id': user.id,
-        'name': data['name'],
-        'phone_number': data['phone'],
         'license_number': data['license'] ?? '',
         'is_on_duty': false,
       });
@@ -67,7 +66,7 @@ class AuthService {
       await _sb.from('donor_data').insert({
         'donor_id': user.id,
         'blood_type': data['bloodType'] ?? '',
-        'is_available': true,
+        'is_available': false,
       });
     }
 
@@ -76,6 +75,18 @@ class AuthService {
         'customer_id': user.id,
         'address': '',
       });
+    }
+
+    final documentPaths =
+        (data['documentPaths'] as Map<String, String?>?) ?? const {};
+    for (final entry in documentPaths.entries) {
+      if (entry.key == 'profile_photo' || entry.value == null) continue;
+      await StorageService.uploadDocument(
+        userId: user.id,
+        role: role.name,
+        documentType: entry.key,
+        file: File(entry.value!),
+      );
     }
   }
 

@@ -45,6 +45,7 @@ class _AnimatedPressButtonState extends State<AnimatedPressButton>
     _ctrl.reverse();
     widget.onTap?.call();
   }
+
   void _onTapCancel() => _ctrl.reverse();
 
   @override

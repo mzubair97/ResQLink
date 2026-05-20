@@ -109,9 +109,9 @@ class BloodRequest {
   final String priority; // 'Normal' | 'Urgent'
   final String distance;
   final String urgencyLevel; // 'CRITICAL' | 'URGENT' | 'STANDARD'
-  final String? customerId;   // customer who created the request
-  final double? latitude;     // stored in blood_requests (DB source of truth)
-  final double? longitude;    // stored in blood_requests (DB source of truth)
+  final String? customerId; // customer who created the request
+  final double? latitude; // stored in blood_requests (DB source of truth)
+  final double? longitude; // stored in blood_requests (DB source of truth)
   RequestStatus status;
   String? matchedDonorName;
 
